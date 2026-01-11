@@ -1,28 +1,30 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Logo } from "@/components/Logo";
+import { useToast } from "@/hooks/use-toast";
+import { getMentorRecommendations } from "@/lib/ai-service";
 import {
   ArrowLeft,
-  Search,
   Star,
   MessageCircle,
   Calendar,
-  Filter,
   CheckCircle2,
   Briefcase,
   GraduationCap,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
-const mentors = [
+const allMentors = [
   {
-    id: 1,
+    id: "1",
     name: "Ananya Sharma",
     role: "SDE at Google",
     type: "alumni",
@@ -35,10 +37,9 @@ const mentors = [
     avatar: "AS",
     isVerified: true,
     experience: "3 years at Google, Ex-Amazon",
-    linkedin: "https://linkedin.com",
   },
   {
-    id: 2,
+    id: "2",
     name: "Vikram Patel",
     role: "4th Year Student",
     type: "senior",
@@ -51,10 +52,9 @@ const mentors = [
     avatar: "VP",
     isVerified: true,
     experience: "Internship at Texas Instruments",
-    linkedin: "https://linkedin.com",
   },
   {
-    id: 3,
+    id: "3",
     name: "Sneha Reddy",
     role: "PM at Microsoft",
     type: "alumni",
@@ -67,10 +67,9 @@ const mentors = [
     avatar: "SR",
     isVerified: true,
     experience: "4 years in Product, Ex-Flipkart",
-    linkedin: "https://linkedin.com",
   },
   {
-    id: 4,
+    id: "4",
     name: "Arjun Mehta",
     role: "3rd Year Student",
     type: "senior",
@@ -83,10 +82,9 @@ const mentors = [
     avatar: "AM",
     isVerified: false,
     experience: "2 Internships completed",
-    linkedin: "https://linkedin.com",
   },
   {
-    id: 5,
+    id: "5",
     name: "Priya Gupta",
     role: "Data Scientist at Meta",
     type: "alumni",
@@ -99,7 +97,6 @@ const mentors = [
     avatar: "PG",
     isVerified: true,
     experience: "5 years in ML, PhD from IIT",
-    linkedin: "https://linkedin.com",
   },
 ];
 
@@ -107,33 +104,99 @@ const filters = [
   { id: "all", label: "All" },
   { id: "alumni", label: "Alumni" },
   { id: "senior", label: "Seniors" },
-];
-
-const branches = [
-  "All Branches",
-  "Computer Science",
-  "Electronics",
-  "Information Technology",
-  "Mechanical",
+  { id: "ai-recommended", label: "AI Recommended" },
 ];
 
 export default function Mentors() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("all");
-  const [selectedBranch, setSelectedBranch] = useState("All Branches");
+  const [aiRecommendations, setAiRecommendations] = useState<Array<{ mentorId: string; matchScore: number; reason: string }>>([]);
+  const [isLoadingAI, setIsLoadingAI] = useState(false);
+  const { toast } = useToast();
 
-  const filteredMentors = mentors.filter((mentor) => {
-    const matchesSearch =
-      mentor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      mentor.skills.some((skill) =>
-        skill.toLowerCase().includes(searchQuery.toLowerCase())
+  // Simulated student profile
+  const studentProfile = {
+    skills: ["JavaScript", "React", "Python"],
+    interests: ["Web Development", "Machine Learning"],
+    careerGoals: "Become a full-stack developer at a top tech company",
+    branch: "Computer Science",
+    year: "2nd Year",
+  };
+
+  const fetchAIRecommendations = async () => {
+    setIsLoadingAI(true);
+    try {
+      const response = await getMentorRecommendations(
+        studentProfile.skills,
+        studentProfile.interests,
+        studentProfile.careerGoals,
+        studentProfile.branch,
+        studentProfile.year,
+        allMentors.map((m) => ({
+          id: m.id,
+          name: m.name,
+          skills: m.skills,
+          branch: m.branch,
+          role: m.role,
+        }))
       );
-    const matchesFilter =
-      activeFilter === "all" || mentor.type === activeFilter;
-    const matchesBranch =
-      selectedBranch === "All Branches" || mentor.branch === selectedBranch;
-    return matchesSearch && matchesFilter && matchesBranch;
-  });
+
+      // Parse JSON from AI response
+      try {
+        const parsed = JSON.parse(response.result);
+        setAiRecommendations(parsed);
+        toast({
+          title: "AI Recommendations Ready",
+          description: "We've found the best mentors for your profile!",
+        });
+      } catch {
+        console.error("Failed to parse AI recommendations");
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to get recommendations",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingAI(false);
+    }
+  };
+
+  const getFilteredMentors = () => {
+    let filtered = allMentors;
+
+    // Apply search filter
+    if (searchQuery) {
+      filtered = filtered.filter(
+        (mentor) =>
+          mentor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          mentor.skills.some((skill) =>
+            skill.toLowerCase().includes(searchQuery.toLowerCase())
+          )
+      );
+    }
+
+    // Apply type filter
+    if (activeFilter === "alumni") {
+      filtered = filtered.filter((m) => m.type === "alumni");
+    } else if (activeFilter === "senior") {
+      filtered = filtered.filter((m) => m.type === "senior");
+    } else if (activeFilter === "ai-recommended" && aiRecommendations.length > 0) {
+      const recommendedIds = aiRecommendations.map((r) => r.mentorId);
+      filtered = filtered.filter((m) => recommendedIds.includes(m.id));
+      // Sort by match score
+      filtered.sort((a, b) => {
+        const scoreA = aiRecommendations.find((r) => r.mentorId === a.id)?.matchScore || 0;
+        const scoreB = aiRecommendations.find((r) => r.mentorId === b.id)?.matchScore || 0;
+        return scoreB - scoreA;
+      });
+    }
+
+    return filtered;
+  };
+
+  const filteredMentors = getFilteredMentors();
 
   return (
     <div className="min-h-screen bg-background pb-20 lg:pb-0">
@@ -160,136 +223,199 @@ export default function Mentors() {
           </p>
         </div>
 
+        {/* AI Recommendation Banner */}
+        <Card variant="glass" className="mb-6 p-4 border-primary/20">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center">
+                <Sparkles className="w-5 h-5 text-primary-foreground" />
+              </div>
+              <div>
+                <p className="font-medium">AI Mentor Matching</p>
+                <p className="text-sm text-muted-foreground">
+                  Get personalized mentor recommendations based on your profile
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="hero"
+              onClick={fetchAIRecommendations}
+              disabled={isLoadingAI}
+            >
+              {isLoadingAI ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Finding matches...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  Get AI Recommendations
+                </>
+              )}
+            </Button>
+          </div>
+        </Card>
+
         {/* Search & Filters */}
         <div className="flex flex-col md:flex-row gap-4 mb-6">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               placeholder="Search by name or skill..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              className="pl-4"
             />
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {filters.map((filter) => (
               <Button
                 key={filter.id}
                 variant={activeFilter === filter.id ? "default" : "outline"}
                 size="sm"
                 onClick={() => setActiveFilter(filter.id)}
+                className={filter.id === "ai-recommended" ? "gap-1" : ""}
               >
+                {filter.id === "ai-recommended" && (
+                  <Sparkles className="w-3 h-3" />
+                )}
                 {filter.label}
+                {filter.id === "ai-recommended" && aiRecommendations.length > 0 && (
+                  <span className="ml-1 text-xs bg-primary-foreground/20 px-1.5 py-0.5 rounded-full">
+                    {aiRecommendations.length}
+                  </span>
+                )}
               </Button>
             ))}
           </div>
-
-          <select
-            value={selectedBranch}
-            onChange={(e) => setSelectedBranch(e.target.value)}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-          >
-            {branches.map((branch) => (
-              <option key={branch} value={branch}>
-                {branch}
-              </option>
-            ))}
-          </select>
         </div>
 
         {/* Mentors Grid */}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredMentors.map((mentor, i) => (
-            <motion.div
-              key={mentor.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
-            >
-              <Card variant="elevated" className="overflow-hidden h-full">
-                <CardContent className="p-6">
-                  {/* Header */}
-                  <div className="flex items-start gap-4 mb-4">
-                    <Avatar className="w-14 h-14 border-2 border-primary">
-                      <AvatarFallback className="bg-primary/10 text-primary text-lg">
-                        {mentor.avatar}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold truncate">{mentor.name}</h3>
-                        {mentor.isVerified && (
-                          <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground flex items-center gap-1">
-                        {mentor.type === "alumni" ? (
-                          <Briefcase className="w-3.5 h-3.5" />
-                        ) : (
-                          <GraduationCap className="w-3.5 h-3.5" />
-                        )}
-                        {mentor.role}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {mentor.branch} • {mentor.year}
-                      </p>
-                    </div>
-                  </div>
+          {filteredMentors.map((mentor, i) => {
+            const recommendation = aiRecommendations.find(
+              (r) => r.mentorId === mentor.id
+            );
 
-                  {/* Experience */}
-                  <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                    {mentor.experience}
-                  </p>
-
-                  {/* Skills */}
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {mentor.skills.slice(0, 4).map((skill) => (
-                      <Badge
-                        key={skill}
-                        variant="secondary"
-                        className="text-xs"
-                      >
-                        {skill}
-                      </Badge>
-                    ))}
-                  </div>
-
-                  {/* Stats */}
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
-                    <span className="flex items-center gap-1">
-                      <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                      <span className="font-medium text-foreground">
-                        {mentor.rating}
+            return (
+              <motion.div
+                key={mentor.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.1 }}
+              >
+                <Card variant="elevated" className="overflow-hidden h-full">
+                  {recommendation && (
+                    <div className="px-4 py-2 gradient-primary text-primary-foreground text-sm flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Sparkles className="w-3 h-3" />
+                        AI Recommended
                       </span>
-                      ({mentor.reviews})
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-4 h-4" />
-                      {mentor.sessions} sessions
-                    </span>
-                  </div>
+                      <span className="font-semibold">
+                        {recommendation.matchScore}% match
+                      </span>
+                    </div>
+                  )}
+                  <CardContent className="p-6">
+                    {/* Header */}
+                    <div className="flex items-start gap-4 mb-4">
+                      <Avatar className="w-14 h-14 border-2 border-primary">
+                        <AvatarFallback className="bg-primary/10 text-primary text-lg">
+                          {mentor.avatar}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold truncate">
+                            {mentor.name}
+                          </h3>
+                          {mentor.isVerified && (
+                            <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground flex items-center gap-1">
+                          {mentor.type === "alumni" ? (
+                            <Briefcase className="w-3.5 h-3.5" />
+                          ) : (
+                            <GraduationCap className="w-3.5 h-3.5" />
+                          )}
+                          {mentor.role}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {mentor.branch} • {mentor.year}
+                        </p>
+                      </div>
+                    </div>
 
-                  {/* Actions */}
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" className="flex-1">
-                      <MessageCircle className="w-4 h-4" />
-                      Chat
-                    </Button>
-                    <Button variant="hero" size="sm" className="flex-1">
-                      <Calendar className="w-4 h-4" />
-                      Book Session
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
+                    {/* AI Match Reason */}
+                    {recommendation && (
+                      <div className="mb-4 p-3 rounded-lg bg-primary/5 border border-primary/20">
+                        <p className="text-xs text-primary font-medium mb-1">
+                          Why this match:
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {recommendation.reason}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Experience */}
+                    <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+                      {mentor.experience}
+                    </p>
+
+                    {/* Skills */}
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {mentor.skills.slice(0, 4).map((skill) => (
+                        <Badge
+                          key={skill}
+                          variant="secondary"
+                          className="text-xs"
+                        >
+                          {skill}
+                        </Badge>
+                      ))}
+                    </div>
+
+                    {/* Stats */}
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
+                      <span className="flex items-center gap-1">
+                        <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                        <span className="font-medium text-foreground">
+                          {mentor.rating}
+                        </span>
+                        ({mentor.reviews})
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-4 h-4" />
+                        {mentor.sessions} sessions
+                      </span>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" className="flex-1">
+                        <MessageCircle className="w-4 h-4" />
+                        Chat
+                      </Button>
+                      <Button variant="hero" size="sm" className="flex-1">
+                        <Calendar className="w-4 h-4" />
+                        Book Session
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            );
+          })}
         </div>
 
         {filteredMentors.length === 0 && (
           <div className="text-center py-12">
-            <p className="text-muted-foreground">No mentors found matching your criteria.</p>
+            <p className="text-muted-foreground">
+              No mentors found matching your criteria.
+            </p>
           </div>
         )}
       </main>

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Logo } from "@/components/Logo";
+import { AIAssistant } from "@/components/AIAssistant";
 import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft,
@@ -243,6 +244,13 @@ export default function AskDoubt() {
             </CardContent>
           </Card>
         </motion.div>
+
+        {/* AI Assistant */}
+        <AIAssistant
+          title={formData.title}
+          description={formData.description}
+          category={formData.category}
+        />
       </main>
     </div>
   );
